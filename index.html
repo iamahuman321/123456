@@ -22,6 +22,9 @@
                 <h1 class="header-title" id="headerTitle">NOTES</h1>
             </div>
             <div class="header-right">
+                <button class="search-btn" id="searchBtn" title="Search">
+                    <i class="fas fa-search"></i>
+                </button>
                 <button class="signin-btn" id="signInBtn" title="Sign In">
                     <i class="fas fa-sign-in-alt"></i>
                 </button>
@@ -35,6 +38,16 @@
         </div>
     </header>
 
+    <!-- Search Container -->
+    <div class="search-container" id="searchContainer">
+        <div class="search-input-container">
+            <input type="text" class="search-input" id="searchInput" placeholder="Search notes..." />
+            <button class="search-clear" id="searchClear">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    </div>
+
     <!-- Sidebar -->
     <aside class="sidebar" id="sidebar">
         <div class="sidebar-overlay" id="sidebarOverlay"></div>
@@ -47,6 +60,10 @@
                 <a href="category.html" class="nav-item" data-page="categories">
                     <i class="fas fa-folder"></i>
                     <span>CATEGORIES</span>
+                </a>
+                <a href="shared.html" class="nav-item" data-page="shared">
+                    <i class="fas fa-share-alt"></i>
+                    <span>SHARED</span>
                 </a>
             </nav>
         </div>
@@ -357,6 +374,8 @@
         </div>
     </div>
 
+    <!-- Load search functionality -->
+    <script src="search.js"></script>
     <script src="script.js"></script>
     <!-- Load Firebase config -->
     <script src="firebase-config.js"></script>

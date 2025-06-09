@@ -6,6 +6,7 @@ let categories = JSON.parse(localStorage.getItem("categories")) || [{ id: "all",
 let currentFilter = "all"
 let currentListType = ""
 let autoSaveTimeout = null
+let notesSearch = null
 
 // Translations
 const translations = {
@@ -45,6 +46,10 @@ const translations = {
     numberedList: "Numbered List",
     checklist: "Checklist",
     addItem: "Add item",
+    searchNotes: "Search notes...",
+    noSearchResults: "No notes found matching your search",
+    searchHistory: "Recent searches",
+    clearHistory: "Clear search history",
   },
   es: {
     notes: "NOTAS",
@@ -82,6 +87,10 @@ const translations = {
     numberedList: "Lista numerada",
     checklist: "Lista de verificación",
     addItem: "Añadir elemento",
+    searchNotes: "Buscar notas...",
+    noSearchResults: "No se encontraron notas que coincidan con tu búsqueda",
+    searchHistory: "Búsquedas recientes",
+    clearHistory: "Limpiar historial de búsqueda",
   },
   fr: {
     notes: "NOTES",
@@ -119,6 +128,10 @@ const translations = {
     numberedList: "Liste numérotée",
     checklist: "Liste de contrôle",
     addItem: "Ajouter un élément",
+    searchNotes: "Rechercher des notes...",
+    noSearchResults: "Aucune note trouvée correspondant à votre recherche",
+    searchHistory: "Recherches récentes",
+    clearHistory: "Effacer l'historique de recherche",
   },
   de: {
     notes: "NOTIZEN",
@@ -156,10 +169,16 @@ const translations = {
     numberedList: "Nummerierte Liste",
     checklist: "Checkliste",
     addItem: "Element hinzufügen",
+    searchNotes: "Notizen suchen...",
+    noSearchResults: "Keine Notizen gefunden, die Ihrer Suche entsprechen",
+    searchHistory: "Letzte Suchen",
+    clearHistory: "Suchverlauf löschen",
   },
 }
 
 let currentLanguage = localStorage.getItem("language") || "en"
+let searchQuery = ""
+let isSearchActive = false
 
 // Translation function
 function t(key) {
@@ -210,12 +229,187 @@ function saveData() {
   if (window.authFunctions && window.authFunctions.saveUserData) {
     window.authFunctions.saveUserData()
   }
+
+  // Update search index
+  if (notesSearch) {
+    notesSearch.buildSearchIndex(notes)
+  }
+}
+
+// Search functionality
+function initSearch() {
+  // Initialize search engine
+  if (window.NotesSearch) {
+    notesSearch = new window.NotesSearch()
+    notesSearch.buildSearchIndex(notes)
+  }
+
+  const searchBtn = document.getElementById('searchBtn')
+  const searchContainer = document.getElementById('searchContainer')
+  const searchInput = document.getElementById('searchInput')
+  const searchClear = document.getElementById('searchClear')
+
+  if (!searchBtn || !searchContainer || !searchInput || !searchClear) {
+    return // Elements not found, probably not on main page
+  }
+
+  searchBtn.addEventListener('click', () => {
+    toggleSearch()
+  })
+
+  searchClear.addEventListener('click', () => {
+    clearSearch()
+  })
+
+  searchInput.addEventListener('input', (e) => {
+    handleSearchInput(e.target.value)
+  })
+
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      performSearch(e.target.value)
+    } else if (e.key === 'Escape') {
+      closeSearch()
+    }
+  })
+
+  // Setup search suggestions
+  setupSearchSuggestions()
+}
+
+function toggleSearch() {
+  const searchContainer = document.getElementById('searchContainer')
+  const searchInput = document.getElementById('searchInput')
+  
+  if (searchContainer.classList.contains('active')) {
+    closeSearch()
+  } else {
+    openSearch()
+  }
+}
+
+function openSearch() {
+  const searchContainer = document.getElementById('searchContainer')
+  const searchInput = document.getElementById('searchInput')
+  
+  searchContainer.classList.add('active')
+  searchInput.focus()
+  isSearchActive = true
+  
+  // Show search suggestions
+  showSearchSuggestions('')
+}
+
+function closeSearch() {
+  const searchContainer = document.getElementById('searchContainer')
+  const searchInput = document.getElementById('searchInput')
+  
+  searchContainer.classList.remove('active')
+  searchInput.value = ''
+  isSearchActive = false
+  
+  // Clear search and show all notes
+  if (searchQuery) {
+    searchQuery = ''
+    renderNotes()
+  }
+  
+  hideSearchSuggestions()
+}
+
+function clearSearch() {
+  const searchInput = document.getElementById('searchInput')
+  searchInput.value = ''
+  searchQuery = ''
+  renderNotes()
+  hideSearchSuggestions()
+}
+
+function handleSearchInput(query) {
+  if (query.length === 0) {
+    hideSearchSuggestions()
+    if (searchQuery) {
+      searchQuery = ''
+      renderNotes()
+    }
+    return
+  }
+  
+  showSearchSuggestions(query)
+}
+
+function performSearch(query) {
+  if (!query || !notesSearch) {
+    clearSearch()
+    return
+  }
+  
+  searchQuery = query.trim()
+  
+  if (searchQuery) {
+    notesSearch.addToHistory(searchQuery)
+    renderNotes()
+    hideSearchSuggestions()
+  }
+}
+
+function setupSearchSuggestions() {
+  // Create suggestions container if it doesn't exist
+  const searchContainer = document.getElementById('searchContainer')
+  if (!searchContainer) return
+  
+  const suggestionsContainer = document.createElement('div')
+  suggestionsContainer.className = 'search-suggestions'
+  suggestionsContainer.id = 'searchSuggestions'
+  searchContainer.appendChild(suggestionsContainer)
+}
+
+function showSearchSuggestions(query) {
+  if (!notesSearch) return
+  
+  const suggestionsContainer = document.getElementById('searchSuggestions')
+  if (!suggestionsContainer) return
+  
+  const suggestions = notesSearch.getSuggestions(query, notes, categories)
+  
+  if (suggestions.length === 0) {
+    hideSearchSuggestions()
+    return
+  }
+  
+  suggestionsContainer.innerHTML = suggestions.map(suggestion => `
+    <div class="search-suggestion" onclick="selectSuggestion('${suggestion.text}')">
+      <i class="${suggestion.icon}"></i>
+      <div class="search-suggestion-content">
+        <div class="search-suggestion-text">${suggestion.text}</div>
+        ${suggestion.description ? `<div class="search-suggestion-desc">${suggestion.description}</div>` : ''}
+      </div>
+    </div>
+  `).join('')
+  
+  suggestionsContainer.style.display = 'block'
+}
+
+function hideSearchSuggestions() {
+  const suggestionsContainer = document.getElementById('searchSuggestions')
+  if (suggestionsContainer) {
+    suggestionsContainer.style.display = 'none'
+  }
+}
+
+function selectSuggestion(text) {
+  const searchInput = document.getElementById('searchInput')
+  searchInput.value = text
+  performSearch(text)
 }
 
 // Theme management
 function initTheme() {
   const savedTheme = localStorage.getItem("theme") || "system"
-  document.getElementById("themeSelect").value = savedTheme
+  const themeSelect = document.getElementById("themeSelect")
+  if (themeSelect) {
+    themeSelect.value = savedTheme
+  }
   applyTheme(savedTheme)
 }
 
@@ -239,7 +433,10 @@ function applyTheme(theme) {
 
 // Language management
 function initLanguage() {
-  document.getElementById("languageSelect").value = currentLanguage
+  const languageSelect = document.getElementById("languageSelect")
+  if (languageSelect) {
+    languageSelect.value = currentLanguage
+  }
   updateLanguage()
 }
 
@@ -255,6 +452,12 @@ function updateLanguage() {
     const key = element.getAttribute("data-translate-placeholder")
     element.placeholder = t(key)
   })
+
+  // Update search placeholder
+  const searchInput = document.getElementById("searchInput")
+  if (searchInput) {
+    searchInput.placeholder = t("searchNotes")
+  }
 
   localStorage.setItem("language", currentLanguage)
 }
@@ -316,37 +519,65 @@ function showPage(pageId) {
     editorPage: currentNote ? t("editNote") : t("addNote"),
   }
 
-  document.getElementById("headerTitle").textContent = titles[pageId] || t("notes")
+  const headerTitle = document.getElementById("headerTitle")
+  if (headerTitle) {
+    headerTitle.textContent = titles[pageId] || t("notes")
+  }
 
   // Show/hide back button
   const backBtn = document.getElementById("backBtn")
   const menuBtn = document.getElementById("menuBtn")
 
   if (pageId === "editorPage" || pageId === "categoriesPage" || pageId === "settingsPage") {
-    backBtn.classList.remove("hidden")
+    if (backBtn) backBtn.classList.remove("hidden")
     if (menuBtn) menuBtn.classList.add("hidden")
   } else {
-    backBtn.classList.add("hidden")
+    if (backBtn) backBtn.classList.add("hidden")
     if (menuBtn) menuBtn.classList.remove("hidden")
   }
 
   currentPage = pageId.replace("Page", "")
 
   // Close sidebar on mobile
-  document.getElementById("sidebar").classList.remove("open")
+  const sidebar = document.getElementById("sidebar")
+  if (sidebar) {
+    sidebar.classList.remove("open")
+  }
+
+  // Close search if switching pages
+  if (isSearchActive && pageId !== "notesPage") {
+    closeSearch()
+  }
 }
 
 // Notes management
 function renderNotes() {
   const container = document.getElementById("notesContainer")
+  if (!container) return
 
   // Query emptyState fresh each time to avoid stale reference
   const emptyState = document.getElementById("emptyState")
 
   console.log("renderNotes called with currentFilter:", currentFilter)
   console.log("Total notes count:", notes.length)
+  console.log("Search query:", searchQuery)
 
-  const filteredNotes = notes.filter((note) => {
+  let filteredNotes = notes
+
+  // Apply search filter first
+  if (searchQuery && notesSearch) {
+    filteredNotes = notesSearch.search(searchQuery, {
+      notes: filteredNotes,
+      categories: categories,
+      searchInContent: true,
+      searchInTitle: true,
+      searchInCategories: true,
+      searchInLists: true
+    })
+  }
+
+  // Then apply category filter
+  filteredNotes = filteredNotes.filter((note) => {
     if (currentFilter === "all") return true
     // Defensive check: ensure note.categories is an array
     if (!Array.isArray(note.categories)) return false
@@ -360,6 +591,16 @@ function renderNotes() {
     if (emptyState instanceof Node) {
       container.appendChild(emptyState)
       emptyState.style.display = "block"
+      
+      // Update empty state message based on search
+      const emptyMessage = emptyState.querySelector('p')
+      if (emptyMessage) {
+        if (searchQuery) {
+          emptyMessage.textContent = t("noSearchResults")
+        } else {
+          emptyMessage.textContent = t("noNotes")
+        }
+      }
     } else {
       console.error("emptyState is not a DOM Node:", emptyState)
     }
@@ -381,7 +622,12 @@ function renderNotes() {
             <div class="note-card fade-in" onclick="openNote('${note.id}')">
                 <div class="note-header">
                     <h3 class="note-title">${note.title || "Untitled"}</h3>
-                    ${hasPassword ? '<i class="fas fa-lock note-lock"></i>' : ""}
+                    <div class="note-actions-header">
+                        ${hasPassword ? '<i class="fas fa-lock note-lock"></i>' : ""}
+                        <button class="action-btn share-note-btn" onclick="event.stopPropagation(); shareNoteFromList('${note.id}')" title="Share">
+                            <i class="fas fa-share"></i>
+                        </button>
+                    </div>
                 </div>
                 ${!hasPassword && note.content ? `<div class="note-content">${note.content}</div>` : ""}
                 ${!hasPassword && hasList ? renderNoteList(note.list) : ""}
@@ -424,7 +670,7 @@ function renderNoteList(list) {
 }
 
 function renderNoteImages(images) {
-  if (!images || images.length === 0) return ""
+  if (!images || images.length === 0)  return ""
 
   const imageElements = images
     .slice(0, 3)
@@ -432,6 +678,18 @@ function renderNoteImages(images) {
     .join("")
 
   return `<div class="note-images">${imageElements}</div>`
+}
+
+// Share note from list
+function shareNoteFromList(noteId) {
+  // Check if user is logged in
+  if (window.authFunctions && window.authFunctions.getCurrentUser() && !window.authFunctions.isUserGuest()) {
+    // Redirect to shared page with share modal
+    localStorage.setItem('shareNoteId', noteId)
+    window.location.href = 'shared.html'
+  } else {
+    showToast('Please sign in to share notes')
+  }
 }
 
 // Update the openNote function to include animation
@@ -450,14 +708,19 @@ function editNote(note) {
   currentNote = note
 
   // Populate editor
-  document.getElementById("titleInput").value = note.title || ""
-  document.getElementById("contentTextarea").value = note.content || ""
+  const titleInput = document.getElementById("titleInput")
+  const contentTextarea = document.getElementById("contentTextarea")
+  
+  if (titleInput) titleInput.value = note.title || ""
+  if (contentTextarea) contentTextarea.value = note.content || ""
 
   // Update date info
   const dateInfo = document.getElementById("dateInfo")
-  const createdDate = formatDate(note.createdAt)
-  const updatedDate = note.updatedAt ? formatDate(note.updatedAt) : null
-  dateInfo.textContent = updatedDate ? `${t("updated")}: ${updatedDate}` : `${t("created")}: ${createdDate}`
+  if (dateInfo) {
+    const createdDate = formatDate(note.createdAt)
+    const updatedDate = note.updatedAt ? formatDate(note.updatedAt) : null
+    dateInfo.textContent = updatedDate ? `${t("updated")}: ${updatedDate}` : `${t("created")}: ${createdDate}`
+  }
 
   // Update categories
   renderCategoryChips(note.categories || ["all"])
@@ -466,23 +729,29 @@ function editNote(note) {
   if (note.list && note.list.items && note.list.items.length > 0) {
     currentListType = note.list.type
     renderList(note.list)
-    document.getElementById("listSection").classList.remove("hidden")
+    const listSection = document.getElementById("listSection")
+    if (listSection) listSection.classList.remove("hidden")
   } else {
-    document.getElementById("listSection").classList.add("hidden")
+    const listSection = document.getElementById("listSection")
+    if (listSection) listSection.classList.add("hidden")
     currentListType = ""
   }
 
   // Update images
   if (note.images && note.images.length > 0) {
     renderImages(note.images)
-    document.getElementById("imagesSection").classList.remove("hidden")
+    const imagesSection = document.getElementById("imagesSection")
+    if (imagesSection) imagesSection.classList.remove("hidden")
   } else {
-    document.getElementById("imagesSection").classList.add("hidden")
+    const imagesSection = document.getElementById("imagesSection")
+    if (imagesSection) imagesSection.classList.add("hidden")
   }
 
   // Update password button
   const passwordIcon = document.getElementById("passwordIcon")
-  passwordIcon.className = note.password ? "fas fa-lock" : "fas fa-unlock"
+  if (passwordIcon) {
+    passwordIcon.className = note.password ? "fas fa-lock" : "fas fa-unlock"
+  }
 
   showPage("editorPage")
 }
@@ -501,19 +770,28 @@ function createNewNote() {
   }
 
   // Clear editor
-  document.getElementById("titleInput").value = ""
-  document.getElementById("contentTextarea").value = ""
-  document.getElementById("dateInfo").textContent = ""
+  const titleInput = document.getElementById("titleInput")
+  const contentTextarea = document.getElementById("contentTextarea")
+  const dateInfo = document.getElementById("dateInfo")
+  
+  if (titleInput) titleInput.value = ""
+  if (contentTextarea) contentTextarea.value = ""
+  if (dateInfo) dateInfo.textContent = ""
 
   // Reset categories
   renderCategoryChips(["all"])
 
   // Hide sections
-  document.getElementById("listSection").classList.add("hidden")
-  document.getElementById("imagesSection").classList.add("hidden")
+  const listSection = document.getElementById("listSection")
+  const imagesSection = document.getElementById("imagesSection")
+  if (listSection) listSection.classList.add("hidden")
+  if (imagesSection) imagesSection.classList.add("hidden")
 
   // Reset password button
-  document.getElementById("passwordIcon").className = "fas fa-unlock"
+  const passwordIcon = document.getElementById("passwordIcon")
+  if (passwordIcon) {
+    passwordIcon.className = "fas fa-unlock"
+  }
 
   currentListType = ""
 
@@ -523,8 +801,11 @@ function createNewNote() {
 function saveCurrentNote() {
   if (!currentNote) return
 
-  const title = document.getElementById("titleInput").value.trim()
-  const content = document.getElementById("contentTextarea").value.trim()
+  const titleInput = document.getElementById("titleInput")
+  const contentTextarea = document.getElementById("contentTextarea")
+  
+  const title = titleInput ? titleInput.value.trim() : ""
+  const content = contentTextarea ? contentTextarea.value.trim() : ""
 
   // Don't save empty notes
   if (
@@ -568,6 +849,8 @@ function showDeleteConfirmation(noteId) {
   const modal = document.getElementById("deleteModal")
   const confirmBtn = document.getElementById("confirmDeleteBtn")
 
+  if (!modal || !confirmBtn) return
+
   // Remove existing event listeners
   confirmBtn.replaceWith(confirmBtn.cloneNode(true))
   const newConfirmBtn = document.getElementById("confirmDeleteBtn")
@@ -593,6 +876,8 @@ function showDeletePasswordPrompt(note) {
   const passwordContainer = document.getElementById("deletePasswordContainer")
   const passwordInput = document.getElementById("deletePasswordInput")
   const confirmBtn = document.getElementById("confirmDeleteBtn")
+
+  if (!modal || !passwordContainer || !passwordInput || !confirmBtn) return
 
   passwordContainer.classList.remove("hidden")
   passwordInput.value = ""
@@ -629,6 +914,8 @@ function showPasswordPrompt(note) {
   const passwordInput = document.getElementById("passwordInput")
   const saveBtn = document.getElementById("savePasswordBtn")
   const removeBtn = document.getElementById("removePasswordBtn")
+
+  if (!modal || !passwordInput || !saveBtn || !removeBtn) return
 
   // Change modal title
   modal.querySelector(".modal-header h3").textContent = "ENTER PASSWORD"
@@ -667,43 +954,49 @@ function renderCategories() {
   const categoriesList = document.getElementById("categoriesList")
 
   // Render filter chips
-  filterChips.innerHTML = categories
-    .map(
-      (category) =>
-        `<button class="chip ${currentFilter === category.id ? "active" : ""}" 
-                 data-filter="${category.id}" onclick="setFilter('${category.id}')">
-            ${category.name}
-         </button>`,
-    )
-    .join("")
-
-  // Render categories list
-  const userCategories = categories.filter((c) => c.id !== "all")
-
-  if (userCategories.length === 0) {
-    categoriesList.innerHTML = `
-            <div class="empty-state">
-                <i class="fas fa-folder"></i>
-                <p>${t("noCategories")}</p>
-            </div>
-        `
-  } else {
-    categoriesList.innerHTML = userCategories
+  if (filterChips) {
+    filterChips.innerHTML = categories
       .map(
         (category) =>
-          `<div class="category-item">
-                <span class="category-name">${category.name}</span>
-                <button class="category-delete" onclick="deleteCategoryItem('${category.id}')" title="Delete category">
-                    <i class="fas fa-times"></i>
-                </button>
-             </div>`,
+          `<button class="chip ${currentFilter === category.id ? "active" : ""}" 
+                   data-filter="${category.id}" onclick="setFilter('${category.id}')">
+              ${category.name}
+           </button>`,
       )
       .join("")
+  }
+
+  // Render categories list
+  if (categoriesList) {
+    const userCategories = categories.filter((c) => c.id !== "all")
+
+    if (userCategories.length === 0) {
+      categoriesList.innerHTML = `
+              <div class="empty-state">
+                  <i class="fas fa-folder"></i>
+                  <p>${t("noCategories")}</p>
+              </div>
+          `
+    } else {
+      categoriesList.innerHTML = userCategories
+        .map(
+          (category) =>
+            `<div class="category-item">
+                  <span class="category-name">${category.name}</span>
+                  <button class="category-delete" onclick="deleteCategoryItem('${category.id}')" title="Delete category">
+                      <i class="fas fa-times"></i>
+                  </button>
+               </div>`,
+        )
+        .join("")
+    }
   }
 }
 
 function renderCategoryChips(selectedCategories = []) {
   const container = document.getElementById("categoryChips")
+  if (!container) return
+
   const userCategories = categories.filter((c) => c.id !== "all")
   const selectedUserCategories = selectedCategories.filter((id) => id !== "all")
 
@@ -726,7 +1019,7 @@ function renderCategoryChips(selectedCategories = []) {
     `
         <button class="chip outline" id="addCategoryBtn" onclick="showCategoryModal()">
             <i class="fas fa-plus"></i>
-            ${t("add")}
+            ADD
         </button>
     `
 }
@@ -746,6 +1039,8 @@ function setFilter(filterId) {
 
 function addCategory() {
   const input = document.getElementById("categoryInput")
+  if (!input) return
+
   const name = input.value.trim()
 
   if (!name) return
@@ -799,6 +1094,8 @@ function deleteCategoryItem(categoryId) {
 function showCategoryModal() {
   const modal = document.getElementById("categoryModal")
   const modalList = document.getElementById("modalCategoriesList")
+
+  if (!modal || !modalList) return
 
   const userCategories = categories.filter((c) => c.id !== "all")
   const selectedCategories = currentNote ? currentNote.categories : []
@@ -855,6 +1152,8 @@ function renderList(list) {
   const container = document.getElementById("listItems")
   const addBtn = document.getElementById("addListItemBtn")
 
+  if (!container) return
+
   if (!list || !list.items) {
     container.innerHTML = ""
     return
@@ -892,7 +1191,9 @@ function renderList(list) {
     })
     .join("")
 
-  addBtn.textContent = t("addItem")
+  if (addBtn) {
+    addBtn.textContent = t("addItem")
+  }
 }
 
 // Update the addListItem function to prevent automatic scrolling
@@ -968,7 +1269,8 @@ function deleteListItem(itemId) {
 
       if (currentNote.list.items.length === 0) {
         currentNote.list = { type: "", items: [] }
-        document.getElementById("listSection").classList.add("hidden")
+        const listSection = document.getElementById("listSection")
+        if (listSection) listSection.classList.add("hidden")
         currentListType = ""
       }
 
@@ -981,7 +1283,8 @@ function deleteListItem(itemId) {
 
     if (currentNote.list.items.length === 0) {
       currentNote.list = { type: "", items: [] }
-      document.getElementById("listSection").classList.add("hidden")
+      const listSection = document.getElementById("listSection")
+      if (listSection) listSection.classList.add("hidden")
       currentListType = ""
     }
 
@@ -992,7 +1295,9 @@ function deleteListItem(itemId) {
 
 function showListTypeModal() {
   const modal = document.getElementById("listTypeModal")
-  modal.classList.add("open")
+  if (modal) {
+    modal.classList.add("open")
+  }
 }
 
 function selectListType(type) {
@@ -1009,7 +1314,8 @@ function selectListType(type) {
     addListItem()
   }
 
-  document.getElementById("listSection").classList.remove("hidden")
+  const listSection = document.getElementById("listSection")
+  if (listSection) listSection.classList.remove("hidden")
   renderList(currentNote.list)
   closeModal("listTypeModal")
   saveCurrentNote()
@@ -1018,6 +1324,7 @@ function selectListType(type) {
 // Image management
 function renderImages(images) {
   const container = document.getElementById("imageGrid")
+  if (!container) return
 
   container.innerHTML = images
     .map(
@@ -1044,7 +1351,8 @@ function handleImageUpload(files) {
         }
         currentNote.images.push(e.target.result)
         renderImages(currentNote.images)
-        document.getElementById("imagesSection").classList.remove("hidden")
+        const imagesSection = document.getElementById("imagesSection")
+        if (imagesSection) imagesSection.classList.remove("hidden")
         saveCurrentNote()
       }
       reader.readAsDataURL(file)
@@ -1058,7 +1366,8 @@ function deleteImage(index) {
   currentNote.images.splice(index, 1)
 
   if (currentNote.images.length === 0) {
-    document.getElementById("imagesSection").classList.add("hidden")
+    const imagesSection = document.getElementById("imagesSection")
+    if (imagesSection) imagesSection.classList.add("hidden")
   }
 
   renderImages(currentNote.images)
@@ -1102,6 +1411,8 @@ function showPasswordModal() {
   const saveBtn = document.getElementById("savePasswordBtn")
   const removeBtn = document.getElementById("removePasswordBtn")
 
+  if (!modal || !passwordInput || !saveBtn || !removeBtn) return
+
   // Reset modal
   modal.querySelector(".modal-header h3").textContent =
     currentNote && currentNote.password ? "UPDATE PASSWORD" : t("addPassword")
@@ -1131,7 +1442,10 @@ function showPasswordModal() {
     currentNote.password = hashedPassword
 
     // Update password icon
-    document.getElementById("passwordIcon").className = "fas fa-lock"
+    const passwordIcon = document.getElementById("passwordIcon")
+    if (passwordIcon) {
+      passwordIcon.className = "fas fa-lock"
+    }
 
     closeModal("passwordModal")
     saveCurrentNote()
@@ -1142,7 +1456,10 @@ function showPasswordModal() {
     currentNote.password = ""
 
     // Update password icon
-    document.getElementById("passwordIcon").className = "fas fa-unlock"
+    const passwordIcon = document.getElementById("passwordIcon")
+    if (passwordIcon) {
+      passwordIcon.className = "fas fa-unlock"
+    }
 
     closeModal("passwordModal")
     saveCurrentNote()
@@ -1155,13 +1472,18 @@ function showPasswordModal() {
 
 // Modal management
 function closeModal(modalId) {
-  document.getElementById(modalId).classList.remove("open")
+  const modal = document.getElementById(modalId)
+  if (modal) {
+    modal.classList.remove("open")
+  }
 }
 
 // Auto-save functionality
 function setupAutoSave() {
   const titleInput = document.getElementById("titleInput")
   const contentTextarea = document.getElementById("contentTextarea")
+
+  if (!titleInput || !contentTextarea) return
 
   function triggerAutoSave() {
     clearTimeout(autoSaveTimeout)
@@ -1179,6 +1501,8 @@ function setupAutoSave() {
 function showNameModal() {
   const modal = document.getElementById("nameModal")
   const nameInput = document.getElementById("newName")
+
+  if (!modal || !nameInput) return
 
   if (window.authFunctions && window.authFunctions.getCurrentUser()) {
     const user = window.authFunctions.getCurrentUser()
@@ -1200,7 +1524,9 @@ function logoutUser() {
 function updateSettingsPage() {
   const userSettings = document.getElementById("userSettings")
 
-  if (window.authFunctions && window.authFunctions.getCurrentUser() && !window.authFunctions.isGuest()) {
+  if (!userSettings) return
+
+  if (window.authFunctions && window.authFunctions.getCurrentUser() && !window.authFunctions.isUserGuest()) {
     userSettings.style.display = "block"
   } else {
     userSettings.style.display = "none"
@@ -1216,18 +1542,24 @@ function showSettingsPage() {
 /* Event listeners */
 function setupEventListeners() {
   // Back button behavior
-  document.getElementById("backBtn").addEventListener("click", () => {
-    if (currentPage === "editor") {
-      showPage("notesPage")
-    } else {
-      showPage("notesPage")
-    }
-  })
+  const backBtn = document.getElementById("backBtn")
+  if (backBtn) {
+    backBtn.addEventListener("click", () => {
+      if (currentPage === "editor") {
+        showPage("notesPage")
+      } else {
+        showPage("notesPage")
+      }
+    })
+  }
 
   // Settings button behavior
-  document.getElementById("settingsBtn").addEventListener("click", () => {
-    showSettingsPage()
-  })
+  const settingsBtn = document.getElementById("settingsBtn")
+  if (settingsBtn) {
+    settingsBtn.addEventListener("click", () => {
+      showSettingsPage()
+    })
+  }
 
   // Category button behavior
   const categoryBtn = document.getElementById("categoryBtn")
@@ -1245,8 +1577,8 @@ function setupEventListeners() {
         e.preventDefault()
         const sidebar = document.getElementById("sidebar")
         const sidebarOverlay = document.getElementById("sidebarOverlay")
-        sidebar.classList.remove("open")
-        sidebarOverlay.classList.remove("open")
+        if (sidebar) sidebar.classList.remove("open")
+        if (sidebarOverlay) sidebarOverlay.classList.remove("open")
         setTimeout(() => {
           window.location.href = href
         }, 300)
@@ -1257,35 +1589,63 @@ function setupEventListeners() {
       showPage(page + "Page")
       const sidebar = document.getElementById("sidebar")
       const sidebarOverlay = document.getElementById("sidebarOverlay")
-      sidebar.classList.remove("open")
-      sidebarOverlay.classList.remove("open")
+      if (sidebar) sidebar.classList.remove("open")
+      if (sidebarOverlay) sidebarOverlay.classList.remove("open")
       e.stopPropagation()
     })
   })
 
   // Add note button
-  document.getElementById("addNoteBtn").addEventListener("click", createNewNote)
+  const addNoteBtn = document.getElementById("addNoteBtn")
+  if (addNoteBtn) {
+    addNoteBtn.addEventListener("click", createNewNote)
+  }
 
   // Categories
-  document.getElementById("addCategoryFormBtn").addEventListener("click", addCategory)
-  document.getElementById("categoryInput").addEventListener("keypress", (e) => {
-    if (e.key === "Enter") {
-      addCategory()
-    }
-  })
+  const addCategoryFormBtn = document.getElementById("addCategoryFormBtn")
+  if (addCategoryFormBtn) {
+    addCategoryFormBtn.addEventListener("click", addCategory)
+  }
+
+  const categoryInput = document.getElementById("categoryInput")
+  if (categoryInput) {
+    categoryInput.addEventListener("keypress", (e) => {
+      if (e.key === "Enter") {
+        addCategory()
+      }
+    })
+  }
 
   // Editor toolbar
-  document.getElementById("imageBtn").addEventListener("click", () => {
-    document.getElementById("imageInput").click()
-  })
+  const imageBtn = document.getElementById("imageBtn")
+  if (imageBtn) {
+    imageBtn.addEventListener("click", () => {
+      const imageInput = document.getElementById("imageInput")
+      if (imageInput) imageInput.click()
+    })
+  }
 
-  document.getElementById("imageInput").addEventListener("change", (e) => {
-    handleImageUpload(e.target.files)
-  })
+  const imageInput = document.getElementById("imageInput")
+  if (imageInput) {
+    imageInput.addEventListener("change", (e) => {
+      handleImageUpload(e.target.files)
+    })
+  }
 
-  document.getElementById("listBtn").addEventListener("click", showListTypeModal)
-  document.getElementById("passwordBtn").addEventListener("click", showPasswordModal)
-  document.getElementById("addListItemBtn").addEventListener("click", addListItem)
+  const listBtn = document.getElementById("listBtn")
+  if (listBtn) {
+    listBtn.addEventListener("click", showListTypeModal)
+  }
+
+  const passwordBtn = document.getElementById("passwordBtn")
+  if (passwordBtn) {
+    passwordBtn.addEventListener("click", showPasswordModal)
+  }
+
+  const addListItemBtn = document.getElementById("addListItemBtn")
+  if (addListItemBtn) {
+    addListItemBtn.addEventListener("click", addListItem)
+  }
 
   // List type selection
   document.querySelectorAll(".list-type-btn").forEach((btn) => {
@@ -1296,58 +1656,83 @@ function setupEventListeners() {
   })
 
   // Settings
-  document.getElementById("themeSelect").addEventListener("change", (e) => {
-    applyTheme(e.target.value)
-  })
+  const themeSelect = document.getElementById("themeSelect")
+  if (themeSelect) {
+    themeSelect.addEventListener("change", (e) => {
+      applyTheme(e.target.value)
+    })
+  }
 
-  document.getElementById("languageSelect").addEventListener("change", (e) => {
-    currentLanguage = e.target.value
-    updateLanguage()
-    renderCategories()
-    renderNotes()
-  })
+  const languageSelect = document.getElementById("languageSelect")
+  if (languageSelect) {
+    languageSelect.addEventListener("change", (e) => {
+      currentLanguage = e.target.value
+      updateLanguage()
+      renderCategories()
+      renderNotes()
+    })
+  }
 
   // Name change modal
-  document.getElementById("nameModalClose").addEventListener("click", () => {
-    closeModal("nameModal")
-  })
-
-  document.getElementById("cancelNameBtn").addEventListener("click", () => {
-    closeModal("nameModal")
-  })
-
-  document.getElementById("saveNameBtn").addEventListener("click", async () => {
-    const newName = document.getElementById("newName").value.trim()
-    if (!newName) {
-      showToast("Please enter a name")
-      return
-    }
-
-    if (window.authFunctions) {
-      await window.authFunctions.updateUserName(newName)
+  const nameModalClose = document.getElementById("nameModalClose")
+  if (nameModalClose) {
+    nameModalClose.addEventListener("click", () => {
       closeModal("nameModal")
-    }
-  })
+    })
+  }
+
+  const cancelNameBtn = document.getElementById("cancelNameBtn")
+  if (cancelNameBtn) {
+    cancelNameBtn.addEventListener("click", () => {
+      closeModal("nameModal")
+    })
+  }
+
+  const saveNameBtn = document.getElementById("saveNameBtn")
+  if (saveNameBtn) {
+    saveNameBtn.addEventListener("click", async () => {
+      const newNameInput = document.getElementById("newName")
+      if (!newNameInput) return
+
+      const newName = newNameInput.value.trim()
+      if (!newName) {
+        showToast("Please enter a name")
+        return
+      }
+
+      if (window.authFunctions) {
+        await window.authFunctions.updateUserName(newName)
+        closeModal("nameModal")
+      }
+    })
+  }
 
   // Password toggle
-  document.getElementById("passwordToggle").addEventListener("click", () => {
-    const input = document.getElementById("passwordInput")
-    const icon = document.getElementById("passwordToggle").querySelector("i")
+  const passwordToggle = document.getElementById("passwordToggle")
+  if (passwordToggle) {
+    passwordToggle.addEventListener("click", () => {
+      const input = document.getElementById("passwordInput")
+      const icon = passwordToggle.querySelector("i")
 
-    if (input.type === "password") {
-      input.type = "text"
-      icon.className = "fas fa-eye-slash"
-    } else {
-      input.type = "password"
-      icon.className = "fas fa-eye"
-    }
-  })
+      if (!input || !icon) return
+
+      if (input.type === "password") {
+        input.type = "text"
+        icon.className = "fas fa-eye-slash"
+      } else {
+        input.type = "password"
+        icon.className = "fas fa-eye"
+      }
+    })
+  }
 
   // Modal close buttons
   document.querySelectorAll(".modal-close").forEach((btn) => {
     btn.addEventListener("click", () => {
       const modal = btn.closest(".modal")
-      modal.classList.remove("open")
+      if (modal) {
+        modal.classList.remove("open")
+      }
     })
   })
 
@@ -1360,25 +1745,40 @@ function setupEventListeners() {
   })
 
   // Cancel buttons
-  document.getElementById("cancelDeleteBtn").addEventListener("click", () => {
-    closeModal("deleteModal")
-  })
+  const cancelDeleteBtn = document.getElementById("cancelDeleteBtn")
+  if (cancelDeleteBtn) {
+    cancelDeleteBtn.addEventListener("click", () => {
+      closeModal("deleteModal")
+    })
+  }
 
-  document.getElementById("categoryModalClose").addEventListener("click", () => {
-    closeModal("categoryModal")
-  })
+  const categoryModalClose = document.getElementById("categoryModalClose")
+  if (categoryModalClose) {
+    categoryModalClose.addEventListener("click", () => {
+      closeModal("categoryModal")
+    })
+  }
 
-  document.getElementById("listTypeModalClose").addEventListener("click", () => {
-    closeModal("listTypeModal")
-  })
+  const listTypeModalClose = document.getElementById("listTypeModalClose")
+  if (listTypeModalClose) {
+    listTypeModalClose.addEventListener("click", () => {
+      closeModal("listTypeModal")
+    })
+  }
 
-  document.getElementById("passwordModalClose").addEventListener("click", () => {
-    closeModal("passwordModal")
-  })
+  const passwordModalClose = document.getElementById("passwordModalClose")
+  if (passwordModalClose) {
+    passwordModalClose.addEventListener("click", () => {
+      closeModal("passwordModal")
+    })
+  }
 
-  document.getElementById("deleteModalClose").addEventListener("click", () => {
-    closeModal("deleteModal")
-  })
+  const deleteModalClose = document.getElementById("deleteModalClose")
+  if (deleteModalClose) {
+    deleteModalClose.addEventListener("click", () => {
+      closeModal("deleteModal")
+    })
+  }
 
   // Keyboard shortcuts
   document.addEventListener("keydown", (e) => {
@@ -1388,16 +1788,31 @@ function setupEventListeners() {
       createNewNote()
     }
 
-    // Escape to close modals
+    // Ctrl/Cmd + F for search
+    if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+      e.preventDefault()
+      if (currentPage === "notes") {
+        openSearch()
+      }
+    }
+
+    // Escape to close modals or search
     if (e.key === "Escape") {
-      document.querySelectorAll(".modal.open").forEach((modal) => {
-        modal.classList.remove("open")
-      })
+      if (isSearchActive) {
+        closeSearch()
+      } else {
+        document.querySelectorAll(".modal.open").forEach((modal) => {
+          modal.classList.remove("open")
+        })
+      }
     }
   })
 
   // Setup auto-save
   setupAutoSave()
+
+  // Initialize search
+  initSearch()
 }
 
 // Update sign-in button based on auth state
@@ -1439,6 +1854,12 @@ function init() {
     // Update sign-in button after auth initialization
     setTimeout(updateSignInButton, 1000)
   }
+
+  // Load search engine
+  if (window.NotesSearch) {
+    notesSearch = new window.NotesSearch()
+    notesSearch.buildSearchIndex(notes)
+  }
 }
 
 // Start the app when DOM is loaded
@@ -1457,3 +1878,27 @@ if ("serviceWorker" in navigator) {
       })
   })
 }
+
+// Make functions globally available
+window.editNote = editNote
+window.openNote = openNote
+window.deleteNote = deleteNote
+window.setFilter = setFilter
+window.addCategory = addCategory
+window.deleteCategoryItem = deleteCategoryItem
+window.showCategoryModal = showCategoryModal
+window.toggleCategorySelection = toggleCategorySelection
+window.removeCategoryFromNote = removeCategoryFromNote
+window.addListItem = addListItem
+window.updateListItem = updateListItem
+window.toggleListItem = toggleListItem
+window.deleteListItem = deleteListItem
+window.selectListType = selectListType
+window.deleteImage = deleteImage
+window.viewImage = viewImage
+window.showPasswordModal = showPasswordModal
+window.closeModal = closeModal
+window.showNameModal = showNameModal
+window.logoutUser = logoutUser
+window.shareNoteFromList = shareNoteFromList
+window.selectSuggestion = selectSuggestion

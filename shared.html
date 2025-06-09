@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shared Notes - Notes App</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet" />
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    
+    <!-- Load Firebase config after Firebase SDK -->
+    <script src="firebase-config.js"></script>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div class="header-left">
+                <a href="index.html" class="back-btn" id="backBtn">
+                    <i class="fas fa-arrow-left"></i>
+                </a>
+                <h1 class="header-title" id="headerTitle">SHARED NOTES</h1>
+            </div>
+            <div class="header-right">
+                <button class="search-btn" id="searchBtn" title="Search">
+                    <i class="fas fa-search"></i>
+                </button>
+                <button class="settings-btn" id="settingsBtn" title="Settings">
+                    <i class="fas fa-cog"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Search Bar -->
+    <div class="search-container" id="searchContainer">
+        <div class="search-input-container">
+            <input type="text" class="search-input" id="searchInput" placeholder="Search shared notes..." />
+            <button class="search-clear" id="searchClear">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Filter Tabs -->
+        <div class="filter-tabs">
+            <button class="tab-btn active" data-tab="shared-with-me">Shared with Me</button>
+            <button class="tab-btn" data-tab="shared-by-me">Shared by Me</button>
+            <button class="tab-btn" data-tab="pending">Pending Invites</button>
+        </div>
+
+        <!-- Shared Notes Container -->
+        <div class="shared-notes-container" id="sharedNotesContainer">
+            <!-- Shared with Me Tab -->
+            <div class="tab-content active" id="shared-with-me">
+                <div class="notes-grid" id="sharedWithMeGrid">
+                    <div class="empty-state">
+                        <i class="fas fa-share-alt"></i>
+                        <p>No notes shared with you yet</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Shared by Me Tab -->
+            <div class="tab-content" id="shared-by-me">
+                <div class="notes-grid" id="sharedByMeGrid">
+                    <div class="empty-state">
+                        <i class="fas fa-share"></i>
+                        <p>You haven't shared any notes yet</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pending Invites Tab -->
+            <div class="tab-content" id="pending">
+                <div class="pending-invites" id="pendingInvites">
+                    <div class="empty-state">
+                        <i class="fas fa-clock"></i>
+                        <p>No pending invites</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Share Note Modal -->
+    <div class="modal" id="shareModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>SHARE NOTE</h3>
+                <button class="modal-close" id="shareModalClose">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="shareUsername">Username or Email</label>
+                    <div class="search-user-container">
+                        <input type="text" id="shareUsername" placeholder="Enter username or email..." />
+                        <div class="user-suggestions" id="userSuggestions"></div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Permissions</label>
+                    <div class="permission-options">
+                        <label class="permission-option">
+                            <input type="radio" name="permission" value="view" checked />
+                            <span>View Only</span>
+                        </label>
+                        <label class="permission-option">
+                            <input type="radio" name="permission" value="edit" />
+                            <span>Can Edit</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="shareMessage">Message (Optional)</label>
+                    <textarea id="shareMessage" placeholder="Add a message for the recipient..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" id="sendShareBtn">SEND INVITE</button>
+                <button class="btn btn-secondary" id="cancelShareBtn">CANCEL</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Note Viewer Modal -->
+    <div class="modal" id="noteViewerModal">
+        <div class="modal-content note-viewer-content">
+            <div class="modal-header">
+                <div class="note-viewer-header">
+                    <h3 id="viewerNoteTitle">Note Title</h3>
+                    <div class="note-viewer-info">
+                        <span id="viewerNoteOwner">Shared by User</span>
+                        <span id="viewerNoteDate">Date</span>
+                    </div>
+                </div>
+                <div class="note-viewer-actions">
+                    <button class="toolbar-btn" id="viewerEditBtn" title="Edit">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="toolbar-btn" id="viewerShareBtn" title="Share">
+                        <i class="fas fa-share"></i>
+                    </button>
+                    <button class="modal-close" id="noteViewerClose">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div class="note-viewer-content-area" id="noteViewerContent">
+                    <!-- Note content will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Real-time Editor Modal -->
+    <div class="modal" id="realtimeEditorModal">
+        <div class="modal-content realtime-editor-content">
+            <div class="modal-header">
+                <div class="editor-header">
+                    <h3 id="editorNoteTitle">Editing Note</h3>
+                    <div class="editor-info">
+                        <div class="active-users" id="activeUsers"></div>
+                        <div class="save-status" id="saveStatus">
+                            <i class="fas fa-check"></i>
+                            <span>Saved</span>
+                        </div>
+                    </div>
+                </div>
+                <button class="modal-close" id="realtimeEditorClose">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="realtime-editor-container">
+                    <input type="text" class="title-input" id="realtimeTitleInput" placeholder="Note title..." />
+                    <textarea class="content-textarea" id="realtimeContentInput" placeholder="Start typing..."></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast">
+        <span id="toastMessage"></span>
+    </div>
+
+    <script src="shared.js"></script>
+</body>
+</html>
