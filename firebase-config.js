@@ -194,22 +194,55 @@ function loadUserData(user) {
 
         console.log("User data loaded successfully")
       } else {
-        // First time user - initialize with default data
-        const defaultCategories = [{ id: "all", name: "All" }]
-        userRef.set({
-          name: user.displayName || user.email.split("@")[0],
-          email: user.email,
-          notes: [],
-          categories: defaultCategories,
-          createdAt: Date.now(),
-          lastLogin: Date.now(),
-        })
+        // First time user - initialize with default data and username
+        setupNewUser(user)
       }
     })
     .catch((error) => {
       console.error("Error loading user data:", error)
       showToast("Error loading your data. Please refresh the page.")
     })
+}
+
+async function setupNewUser(user) {
+  try {
+    // Generate unique username
+    let baseUsername = user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '')
+    let username = baseUsername
+    let counter = 1
+    
+    // Check if username exists
+    while (true) {
+      const usernameRef = window.database.ref('users')
+      const usernameSnapshot = await usernameRef.orderByChild('username').equalTo(username).once('value')
+      
+      if (!usernameSnapshot.exists()) {
+        break
+      }
+      
+      username = `${baseUsername}${counter}`
+      counter++
+    }
+    
+    const defaultCategories = [{ id: "all", name: "All" }]
+    
+    // Set up new user
+    await window.database.ref(`users/${user.uid}`).set({
+      name: user.displayName || user.email.split("@")[0],
+      email: user.email,
+      username: username,
+      notes: [],
+      categories: defaultCategories,
+      createdAt: Date.now(),
+      lastLogin: Date.now(),
+    })
+    
+    showToast(`Welcome! Your username is: ${username}`)
+    
+  } catch (error) {
+    console.error("Error setting up new user:", error)
+    showToast("Error setting up your account")
+  }
 }
 
 function saveUserData() {
@@ -266,11 +299,30 @@ function signUpWithEmail(email, password, name) {
       .updateProfile({
         displayName: name,
       })
-      .then(() => {
+      .then(async () => {
+        // Generate unique username
+        let baseUsername = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '')
+        let username = baseUsername
+        let counter = 1
+        
+        // Check if username exists
+        while (true) {
+          const usernameRef = window.database.ref('users')
+          const usernameSnapshot = await usernameRef.orderByChild('username').equalTo(username).once('value')
+          
+          if (!usernameSnapshot.exists()) {
+            break
+          }
+          
+          username = `${baseUsername}${counter}`
+          counter++
+        }
+        
         // Save user info to database
         return window.database.ref(`users/${user.uid}`).set({
           name: name,
           email: email,
+          username: username,
           createdAt: Date.now(),
           lastLogin: Date.now(),
           notes: [],

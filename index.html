@@ -31,6 +31,9 @@
                 <button class="category-btn" id="categoryBtn" title="Categories">
                     <i class="fas fa-folder"></i>
                 </button>
+                <a href="shared.html" class="shared-btn" id="sharedBtn" title="Shared Notes">
+                    <i class="fas fa-share-alt"></i>
+                </a>
                 <button class="settings-btn" id="settingsBtn" title="Settings">
                     <i class="fas fa-cog"></i>
                 </button>
@@ -144,6 +147,9 @@
                     </button>
                 </div>
                 <div class="toolbar-right">
+                    <button class="toolbar-btn" id="shareNoteBtn">
+                        <i class="fas fa-share"></i>
+                    </button>
                     <button class="toolbar-btn" id="passwordBtn">
                         <i class="fas fa-unlock" id="passwordIcon"></i>
                     </button>
@@ -318,6 +324,48 @@
         </div>
     </div>
 
+    <!-- Share Note Modal -->
+    <div class="modal" id="shareNoteModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>SHARE NOTE</h3>
+                <button class="modal-close" id="shareNoteModalClose">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="shareUsername">Username or Email</label>
+                    <div class="search-user-container">
+                        <input type="text" id="shareUsername" placeholder="Enter username or email..." />
+                        <div class="user-suggestions" id="userSuggestions"></div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Permissions</label>
+                    <div class="permission-options">
+                        <label class="permission-option">
+                            <input type="radio" name="permission" value="view" checked />
+                            <span>View Only</span>
+                        </label>
+                        <label class="permission-option">
+                            <input type="radio" name="permission" value="edit" />
+                            <span>Can Edit</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="shareMessage">Message (Optional)</label>
+                    <textarea id="shareMessage" placeholder="Add a message for the recipient..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" id="sendShareBtn">SEND INVITE</button>
+                <button class="btn btn-secondary" id="cancelShareBtn">CANCEL</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast Notification -->
     <div class="toast" id="toast">
         <span id="toastMessage"></span>
@@ -396,6 +444,161 @@
         window.location.href = "in.html";
     });
 
+    // Share note button in editor
+    document.getElementById("shareNoteBtn").addEventListener("click", () => {
+        if (window.currentNote) {
+            showShareNoteModal(window.currentNote.id);
+        }
+    });
+
+    // Share note modal functionality
+    function showShareNoteModal(noteId) {
+        // Check if user is logged in
+        if (!window.authFunctions || !window.authFunctions.getCurrentUser()) {
+            showToast("Please sign in to share notes");
+            return;
+        }
+
+        const modal = document.getElementById('shareNoteModal');
+        const usernameInput = document.getElementById('shareUsername');
+        const userSuggestions = document.getElementById('userSuggestions');
+        
+        modal.classList.add('open');
+        usernameInput.focus();
+        
+        // Setup user search
+        let searchTimeout;
+        usernameInput.addEventListener('input', async (e) => {
+            clearTimeout(searchTimeout);
+            const query = e.target.value.trim();
+            
+            if (query.length < 2) {
+                userSuggestions.innerHTML = '';
+                return;
+            }
+            
+            searchTimeout = setTimeout(async () => {
+                try {
+                    const usersRef = window.database.ref('users');
+                    const snapshot = await usersRef.orderByChild('username').startAt(query).endAt(query + '\uf8ff').limitToFirst(5).once('value');
+                    const users = snapshot.val() || {};
+                    
+                    const currentUser = window.authFunctions.getCurrentUser();
+                    const suggestions = Object.values(users)
+                        .filter(user => user.uid !== currentUser.uid)
+                        .map(user => `
+                            <div class="user-suggestion" onclick="selectUser('${user.username}', '${user.email}')">
+                                <div class="user-info">
+                                    <strong>${user.username}</strong>
+                                    <small>${user.email}</small>
+                                </div>
+                            </div>
+                        `).join('');
+                    
+                    userSuggestions.innerHTML = suggestions;
+                } catch (error) {
+                    console.error('Error searching users:', error);
+                }
+            }, 300);
+        });
+        
+        // Setup send invite
+        document.getElementById('sendShareBtn').onclick = () => sendShareInvite(noteId);
+    }
+
+    function selectUser(username, email) {
+        document.getElementById('shareUsername').value = username;
+        document.getElementById('userSuggestions').innerHTML = '';
+    }
+
+    async function sendShareInvite(noteId) {
+        const usernameOrEmail = document.getElementById('shareUsername').value.trim();
+        const permission = document.querySelector('input[name="permission"]:checked').value;
+        const message = document.getElementById('shareMessage').value.trim();
+        
+        if (!usernameOrEmail) {
+            showToast('Please enter a username or email');
+            return;
+        }
+        
+        try {
+            const currentUser = window.authFunctions.getCurrentUser();
+            
+            // Find user by username or email
+            const usersRef = window.database.ref('users');
+            let targetUser = null;
+            
+            // Search by username first
+            const usernameSnapshot = await usersRef.orderByChild('username').equalTo(usernameOrEmail).once('value');
+            if (usernameSnapshot.exists()) {
+                targetUser = Object.values(usernameSnapshot.val())[0];
+            } else {
+                // Search by email
+                const emailSnapshot = await usersRef.orderByChild('email').equalTo(usernameOrEmail).once('value');
+                if (emailSnapshot.exists()) {
+                    targetUser = Object.values(emailSnapshot.val())[0];
+                }
+            }
+            
+            if (!targetUser) {
+                showToast('User not found');
+                return;
+            }
+            
+            if (targetUser.uid === currentUser.uid) {
+                showToast('You cannot share with yourself');
+                return;
+            }
+            
+            // Get the note
+            const note = JSON.parse(localStorage.getItem("notes") || "[]").find(n => n.id === noteId);
+            
+            if (!note) {
+                showToast('Note not found');
+                return;
+            }
+            
+            // Create invite
+            const inviteId = window.database.ref().child('pendingInvites').push().key;
+            const invite = {
+                id: inviteId,
+                noteId: noteId,
+                noteTitle: note.title,
+                fromUserId: currentUser.uid,
+                fromUsername: currentUser.displayName || currentUser.email.split('@')[0],
+                toUserId: targetUser.uid,
+                permission: permission,
+                message: message,
+                sentAt: Date.now()
+            };
+            
+            // Save invite
+            await window.database.ref(`pendingInvites/${targetUser.uid}/${inviteId}`).set(invite);
+            
+            // Close modal and show success
+            document.getElementById('shareNoteModal').classList.remove('open');
+            showToast('Invite sent successfully!');
+            
+            // Clear form
+            document.getElementById('shareUsername').value = '';
+            document.getElementById('shareMessage').value = '';
+            document.querySelector('input[name="permission"][value="view"]').checked = true;
+            
+        } catch (error) {
+            console.error('Error sending invite:', error);
+            showToast('Error sending invite');
+        }
+    }
+
+    // Close share modal
+    document.getElementById('shareNoteModalClose').addEventListener('click', () => {
+        document.getElementById('shareNoteModal').classList.remove('open');
+    });
+
+    document.getElementById('cancelShareBtn').addEventListener('click', () => {
+        document.getElementById('shareNoteModal').classList.remove('open');
+    });
+
     // Initialize after Firebase is ready
     waitForFirebase().then(function() {
         console.log("Firebase ready in index.html");
@@ -463,29 +666,29 @@
 
     // Save name function
     document.getElementById("saveNameBtn").addEventListener("click", async () => {
-  const newName = document.getElementById("newName").value.trim()
-  if (!newName) {
-    showToast("Please enter a name")
-    return
-  }
+        const newName = document.getElementById("newName").value.trim();
+        if (!newName) {
+            showToast("Please enter a name");
+            return;
+        }
 
-  const saveBtn = document.getElementById("saveNameBtn")
-  saveBtn.disabled = true
-  saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...'
+        const saveBtn = document.getElementById("saveNameBtn");
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
 
-  try {
-    if (window.authFunctions) {
-      await window.authFunctions.updateUserName(newName)
-      closeModal("nameModal")
-    }
-  } catch (error) {
-    console.error("Error updating name:", error)
-    showToast("Failed to update name: " + error.message)
-  } finally {
-    saveBtn.disabled = false
-    saveBtn.innerHTML = "SAVE"
-  }
-})
+        try {
+            if (window.authFunctions) {
+                await window.authFunctions.updateUserName(newName);
+                closeModal("nameModal");
+            }
+        } catch (error) {
+            console.error("Error updating name:", error);
+            showToast("Failed to update name: " + error.message);
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = "SAVE";
+        }
+    });
 
     // Cancel name change
     document.getElementById("cancelNameBtn").addEventListener("click", function() {
@@ -496,6 +699,13 @@
     document.getElementById("nameModalClose").addEventListener("click", function() {
         document.getElementById("nameModal").classList.remove("open");
     });
+
+    // Global functions
+    window.showShareNoteModal = showShareNoteModal;
+    window.selectUser = selectUser;
+    window.sendShareInvite = sendShareInvite;
+    window.showNameModal = showNameModal;
+    window.logoutUser = logoutUser;
 </script>
 </body>
 </html>

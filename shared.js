@@ -780,6 +780,14 @@ function setupEventListeners() {
     })
 }
 
+// Global functions for HTML onclick handlers
+window.viewSharedNote = viewSharedNote
+window.editSharedNote = editSharedNote
+window.shareNote = shareNote
+window.acceptInvite = acceptInvite
+window.declineInvite = declineInvite
+window.selectUser = selectUser
+
 // Initialize page
 async function init() {
     await waitForFirebase()

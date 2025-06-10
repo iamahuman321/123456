@@ -111,7 +111,8 @@ body {
 .back-btn,
 .settings-btn,
 .search-btn,
-.category-btn {
+.category-btn,
+.shared-btn {
   background: none;
   border: none;
   color: var(--text);
@@ -120,13 +121,18 @@ body {
   border-radius: 8px;
   cursor: pointer;
   transition: var(--transition);
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .menu-btn:hover,
 .back-btn:hover,
 .settings-btn:hover,
 .search-btn:hover,
-.category-btn:hover {
+.category-btn:hover,
+.shared-btn:hover {
   background: var(--surface);
 }
 
@@ -554,7 +560,8 @@ body {
   transition: var(--transition);
 }
 
-.shared-note-card:hover .note-actions {
+.shared-note-card:hover .note-actions,
+.note-card:hover .note-actions {
   opacity: 1;
 }
 
